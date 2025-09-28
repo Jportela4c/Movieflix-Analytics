@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  app:
+    build: ./app
+    container_name: movieflix_app
+    volumes:
+      - app_data:/app/data
+    environment:
+      - PORT=${APP_PORT:-8000}
+    expose:
+      - "8000"
+
+  nginx:
+    build: ./nginx
+    container_name: movieflix_nginx
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+
+  dw:
+    image: postgres:15-alpine
+    container_name: movieflix_dw
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./dw/init_dw.sql:/docker-entrypoint-initdb.d/00_init_dw.sql:ro
+    ports:
+      - "5432:5432"
+
+  etl:
+    build: ./etl
+    container_name: movieflix_etl
+    depends_on:
+      - dw
+    environment:
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      OMDB_API_KEY: ${OMDB_API_KEY}
+    volumes:
+      - ./etl/datalake:/etl/datalake
+    entrypoint: ["bash", "-lc"]
+    command: "python generate_datalake.py && python load_dw.py"
+
+volumes:
+  app_data:
+  pgdata:
