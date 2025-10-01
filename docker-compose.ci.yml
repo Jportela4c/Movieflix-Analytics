@@ -1,0 +1,10 @@
+services:
+  nginx:
+    ports:
+      - "8080:80"
+  app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile.alpine
+    ports:
+      - "8000:8000"

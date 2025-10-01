@@ -34,6 +34,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./app
+          file: ./app/Dockerfile.alpine
           push: false
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.APP_IMAGE }}:ci
@@ -57,34 +58,24 @@ jobs:
       # ---------- TESTE DE INTEGRAÇÃO ----------
       - name: Start services (app + nginx) for integration test
         run: |
-          # rede para os containers
-          docker network create movieflix-ci || true
-
-          # subir app
-          docker run -d --rm --name app_test --network movieflix-ci \
-            -e PORT=8000 \
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.APP_IMAGE }}:ci
-
-          # subir nginx apontando para hostname "app"
-          docker run -d --rm --name nginx_test --network movieflix-ci -p 8080:80 \
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.NGINX_IMAGE }}:ci
-
-          # aguardar o app responder
+          # Use docker-compose with CI override for port 8080
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build app nginx
+          
+          # Wait for app to respond via nginx
           for i in {1..20}; do
             sleep 1
             if curl -fsS http://localhost:8080/health | grep -q '"ok"'; then
-              echo "App OK"; exit 0
+              echo "App OK via nginx on port 8080"
+              exit 0
             fi
           done
-          echo "Falha ao validar /health via Nginx"
+          echo "Failed to validate /health via nginx on port 8080"
           exit 1
 
       - name: Stop test containers
         if: always()
         run: |
-          docker rm -f nginx_test || true
-          docker rm -f app_test || true
-          docker network rm movieflix-ci || true
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml down
 
       # ---------- PUSH (apenas na main) ----------
       - name: Push app image (latest + sha)
